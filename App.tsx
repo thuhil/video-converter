@@ -1,19 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
-  Upload, FileVideo, FileAudio, FileImage, Settings, 
+  Upload, FileVideo, FileAudio, FileImage, FileText, Settings, 
   CheckCircle, Loader2, Download, AlertCircle, 
-  Wand2, RefreshCw, X, Play, Music, Image as ImageIcon,
-  ChevronRight, ArrowRight
+  Wand2, RefreshCw, X, Play, Music, ArrowRight
 } from 'lucide-react';
 import { MediaType, ConversionStatus, MediaFile, ConversionOption, ProcessingResult } from './types';
-import { convertImage, convertImageToPDF, getFileExtension, formatFileSize } from './utils/mediaUtils';
-import { analyzeImage, processAudio } from './services/geminiService';
+import { convertImage, getFileExtension, formatFileSize } from './utils/mediaUtils';
+import { analyzeImage, processAudio, analyzeDocument } from './services/geminiService';
 
 // Supported Input Formats
 const ACCEPTED_TYPES = {
   'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'],
   'video/*': ['.mp4', '.mov', '.avi', '.mkv', '.webm'],
-  'audio/*': ['.mp3', '.wav', '.aac', '.flac', '.ogg']
+  'audio/*': ['.mp3', '.wav', '.aac', '.flac', '.ogg'],
+  'application/pdf': ['.pdf']
 };
 
 export default function App() {
@@ -23,6 +23,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [selectedFormat, setSelectedFormat] = useState<string>('');
   const [progress, setProgress] = useState<number>(0);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -30,33 +31,56 @@ export default function App() {
     if (file.type.startsWith('image/')) return MediaType.IMAGE;
     if (file.type.startsWith('video/')) return MediaType.VIDEO;
     if (file.type.startsWith('audio/')) return MediaType.AUDIO;
+    if (file.type === 'application/pdf') return MediaType.DOCUMENT;
     return MediaType.UNKNOWN;
+  };
+
+  const processFile = (file: File) => {
+    const type = getMediaType(file);
+    
+    if (type === MediaType.UNKNOWN) {
+      setErrorMsg("Unsupported file type. Please upload Video, Audio, Image, or PDF.");
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    
+    setActiveFile({
+      file,
+      previewUrl,
+      type,
+      id: Math.random().toString(36).substring(7),
+      extension: getFileExtension(file.name)
+    });
+    setStatus(ConversionStatus.IDLE);
+    setResult(null);
+    setErrorMsg('');
+    setSelectedFormat('');
+    setProgress(0);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const type = getMediaType(file);
-      
-      if (type === MediaType.UNKNOWN) {
-        setErrorMsg("Unsupported file type. Please upload Video, Audio, or Image.");
-        return;
-      }
+      processFile(e.target.files[0]);
+    }
+  };
 
-      const previewUrl = URL.createObjectURL(file);
-      
-      setActiveFile({
-        file,
-        previewUrl,
-        type,
-        id: Math.random().toString(36).substring(7),
-        extension: getFileExtension(file.name)
-      });
-      setStatus(ConversionStatus.IDLE);
-      setResult(null);
-      setErrorMsg('');
-      setSelectedFormat('');
-      setProgress(0);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -82,8 +106,6 @@ export default function App() {
           { label: 'PNG Image', value: 'png', extension: 'png', type: 'conversion' },
           { label: 'JPEG Image', value: 'jpg', extension: 'jpg', type: 'conversion' },
           { label: 'WebP Image', value: 'webp', extension: 'webp', type: 'conversion' },
-          { label: 'PDF Document', value: 'pdf', extension: 'pdf', type: 'conversion' },
-          // BMP/ICO are difficult in browser, skipping to ensure robustness
           { ...baseAI, label: 'AI: Describe Image' }
         );
         break;
@@ -105,6 +127,13 @@ export default function App() {
           { label: 'AAC Audio', value: 'aac', extension: 'aac', type: 'conversion' },
           { label: 'FLAC Audio', value: 'flac', extension: 'flac', type: 'conversion' },
           { ...baseAI, label: 'AI: Transcribe Audio' }
+        );
+        break;
+      case MediaType.DOCUMENT:
+        options.push(
+           { ...baseAI, label: 'AI: Summarize Document' },
+           { label: 'Convert to TXT', value: 'txt', extension: 'txt', type: 'conversion' },
+           { label: 'Convert to DOCX', value: 'docx', extension: 'docx', type: 'conversion' }
         );
         break;
     }
@@ -152,6 +181,8 @@ export default function App() {
           textResult = await analyzeImage(activeFile.file);
         } else if (activeFile.type === MediaType.AUDIO) {
           textResult = await processAudio(activeFile.file);
+        } else if (activeFile.type === MediaType.DOCUMENT) {
+          textResult = await analyzeDocument(activeFile.file);
         } else {
           // Mock Video analysis
           await new Promise(r => setTimeout(r, 1500));
@@ -163,22 +194,18 @@ export default function App() {
         setResult({ url, filename: `analysis_${activeFile.file.name}.txt`, text: textResult });
       }
       // 2. Real Image Conversion
-      else if (activeFile.type === MediaType.IMAGE && ['png', 'jpg', 'webp', 'pdf'].includes(option.value)) {
+      else if (activeFile.type === MediaType.IMAGE && ['png', 'jpg', 'webp'].includes(option.value)) {
         // Real conversion for supported formats
-        let blob: Blob;
-        if (option.value === 'pdf') {
-          blob = await convertImageToPDF(activeFile.file);
-        } else {
-          const mime = option.value === 'png' ? 'image/png' : option.value === 'webp' ? 'image/webp' : 'image/jpeg';
-          blob = await convertImage(activeFile.file, mime);
-        }
+        const mime = option.value === 'png' ? 'image/png' : option.value === 'webp' ? 'image/webp' : 'image/jpeg';
+        const blob = await convertImage(activeFile.file, mime);
+        
         setProgress(100);
         const url = URL.createObjectURL(blob);
         const nameParts = activeFile.file.name.split('.');
         const newName = `${nameParts.slice(0, -1).join('.')}.${option.extension}`;
         setResult({ url, filename: newName });
       }
-      // 3. Simulated Video/Audio Conversion (Backend required for moviepy/ffmpeg)
+      // 3. Simulated Conversion (Video/Audio/PDF backend required)
       else {
         await simulateProgress();
         // Return original file as a mock result
@@ -186,7 +213,7 @@ export default function App() {
         setResult({ 
           url, 
           filename: `converted_${activeFile.file.name.split('.')[0]}.${option.extension}`,
-          text: `Conversion to ${option.extension.toUpperCase()} simulated. In a production environment with Python/MoviePy, this file would be processed on the server.`
+          text: `Conversion to ${option.extension.toUpperCase()} simulated. In a production environment with Python/MoviePy/PDF tools, this file would be processed on the server.`
         });
       }
 
@@ -232,7 +259,8 @@ export default function App() {
                 <p><strong>Supported:</strong></p>
                 <p>🎥 MP4, AVI, MOV, MKV</p>
                 <p>🎵 MP3, WAV, AAC, FLAC</p>
-                <p>🖼️ JPG, PNG, WEBP, PDF</p>
+                <p>🖼️ JPG, PNG, WEBP</p>
+                <p>📄 PDF Documents</p>
              </div>
           </div>
         </div>
@@ -259,7 +287,14 @@ export default function App() {
             <div className="mt-10 animate-in fade-in zoom-in duration-500">
               <div 
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 rounded-3xl p-16 text-center hover:border-indigo-500 hover:bg-indigo-50/30 transition-all cursor-pointer group bg-white"
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-3xl p-16 text-center transition-all cursor-pointer group bg-white ${
+                  isDragging 
+                    ? 'border-indigo-500 bg-indigo-50 scale-102 ring-4 ring-indigo-100' 
+                    : 'border-slate-300 hover:border-indigo-500 hover:bg-indigo-50/30'
+                }`}
               >
                 <input 
                   type="file" 
@@ -268,15 +303,18 @@ export default function App() {
                   onChange={handleFileSelect}
                   accept={Object.values(ACCEPTED_TYPES).flat().join(',')}
                 />
-                <div className="w-20 h-20 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform shadow-sm">
-                  <Upload className="w-10 h-10 text-indigo-600" />
+                <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 transition-transform shadow-sm ${
+                   isDragging ? 'bg-indigo-200 scale-110' : 'bg-indigo-100 group-hover:scale-110'
+                }`}>
+                  <Upload className={`w-10 h-10 ${isDragging ? 'text-indigo-800' : 'text-indigo-600'}`} />
                 </div>
                 <h2 className="text-2xl font-bold text-slate-900 mb-2">Drag & Drop or Click to Upload</h2>
-                <p className="text-slate-500 text-lg">Support for Video, Audio, and Images</p>
+                <p className="text-slate-500 text-lg">Support for Video, Audio, Images, and PDF</p>
                 <div className="mt-8 flex justify-center gap-4 text-sm text-slate-400">
                    <span className="flex items-center gap-1"><FileVideo className="w-4 h-4" /> Video</span>
                    <span className="flex items-center gap-1"><FileAudio className="w-4 h-4" /> Audio</span>
                    <span className="flex items-center gap-1"><FileImage className="w-4 h-4" /> Image</span>
+                   <span className="flex items-center gap-1"><FileText className="w-4 h-4" /> PDF</span>
                 </div>
               </div>
             </div>
@@ -300,6 +338,12 @@ export default function App() {
                     <div className="text-white/50 flex flex-col items-center">
                       <Music className="w-16 h-16 mb-2" />
                       <span className="text-xs font-mono uppercase">Audio File</span>
+                    </div>
+                  )}
+                  {activeFile.type === MediaType.DOCUMENT && (
+                    <div className="text-white/50 flex flex-col items-center">
+                      <FileText className="w-16 h-16 mb-2" />
+                      <span className="text-xs font-mono uppercase">PDF Document</span>
                     </div>
                   )}
                 </div>

@@ -75,3 +75,28 @@ export const processAudio = async (file: File): Promise<string> => {
     throw new Error("Failed to process audio with AI.");
   }
 };
+
+/**
+ * Analyzes a PDF document using Gemini.
+ */
+export const analyzeDocument = async (file: File): Promise<string> => {
+  try {
+    const model = 'gemini-2.5-flash-latest';
+    const docPart = await fileToGenerativePart(file);
+
+    const response: GenerateContentResponse = await ai.models.generateContent({
+      model: model,
+      contents: {
+        parts: [
+          docPart,
+          { text: "Please provide a comprehensive summary of this document. List key points and any action items." }
+        ]
+      },
+    });
+
+    return response.text || "No summary generated.";
+  } catch (error) {
+    console.error("Gemini Document Analysis Error:", error);
+    throw new Error("Failed to analyze document with AI.");
+  }
+};
