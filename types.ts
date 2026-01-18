@@ -35,3 +35,5 @@ export interface ProcessingResult {
   text?: string;
   stats?: string;
 }
+
+export type Theme = 'light' | 'dark' | 'grey' | 'warm' | 'cyberpunk';
