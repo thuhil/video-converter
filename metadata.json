@@ -1,0 +1,5 @@
+{
+  "name": "Universal Media Studio",
+  "description": "A modern, React-based media converter and AI analysis tool. Converts images locally and uses Gemini AI for media understanding and transcription.",
+  "requestFramePermissions": []
+}
