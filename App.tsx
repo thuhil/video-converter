@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Upload, FileVideo, FileAudio, FileImage, FileText, Settings, 
   CheckCircle, Loader2, Download, AlertCircle, 
@@ -67,16 +67,25 @@ export default function App() {
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragging(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    
+    // Prevent flickering: only disable dragging if we left the main container, not just entered a child element
+    if (e.currentTarget.contains(e.relatedTarget as Node)) {
+      return;
+    }
+    
     setIsDragging(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragging(false);
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
@@ -229,7 +238,7 @@ export default function App() {
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
       
       {/* Sidebar - "Streamlit" Style */}
-      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col z-10 shadow-sm">
+      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col z-10 shadow-sm hidden md:flex">
         <div className="p-6 border-b border-slate-100">
           <div className="flex items-center gap-2 font-bold text-xl text-indigo-600">
              <RefreshCw className="w-6 h-6" />
@@ -273,28 +282,40 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full relative overflow-y-auto">
         <header className="bg-white px-8 py-5 border-b border-slate-200 flex items-center justify-between sticky top-0 z-10">
-           <h1 className="text-xl font-semibold text-slate-800">Media Converter & Processor</h1>
+           <div className="flex items-center gap-3">
+             <div className="md:hidden">
+                <RefreshCw className="w-6 h-6 text-indigo-600" />
+             </div>
+             <h1 className="text-xl font-semibold text-slate-800">Media Converter & Processor</h1>
+           </div>
            <div className="flex items-center gap-2 text-sm text-slate-500">
              <span className="w-2 h-2 rounded-full bg-green-500"></span>
-             System Ready
+             <span className="hidden sm:inline">System Ready</span>
            </div>
         </header>
 
-        <div className="flex-1 p-8 max-w-5xl mx-auto w-full">
+        {/* 
+          Container for the main workspace. 
+          When no file is selected, this container fills the screen to maximize drop area. 
+        */}
+        <div className="flex-1 p-4 md:p-8 w-full h-full flex flex-col">
           
           {/* Upload Section */}
           {!activeFile ? (
-            <div className="mt-10 animate-in fade-in zoom-in duration-500">
+            <div className="flex-1 w-full h-full flex flex-col animate-in fade-in zoom-in duration-500">
               <div 
                 onClick={() => fileInputRef.current?.click()}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                className={`border-2 border-dashed rounded-3xl p-16 text-center transition-all cursor-pointer group bg-white ${
-                  isDragging 
-                    ? 'border-indigo-500 bg-indigo-50 scale-102 ring-4 ring-indigo-100' 
-                    : 'border-slate-300 hover:border-indigo-500 hover:bg-indigo-50/30'
-                }`}
+                className={`
+                  flex-1 w-full flex flex-col items-center justify-center
+                  border-3 border-dashed rounded-3xl p-6 md:p-16 text-center transition-all cursor-pointer group bg-white relative overflow-hidden
+                  ${isDragging 
+                    ? 'border-indigo-500 bg-indigo-50/50 scale-[1.005] shadow-2xl ring-4 ring-indigo-100' 
+                    : 'border-slate-300 hover:border-indigo-500 hover:bg-indigo-50/30 hover:shadow-xl'
+                  }
+                `}
               >
                 <input 
                   type="file" 
@@ -303,35 +324,51 @@ export default function App() {
                   onChange={handleFileSelect}
                   accept={Object.values(ACCEPTED_TYPES).flat().join(',')}
                 />
-                <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 transition-transform shadow-sm ${
-                   isDragging ? 'bg-indigo-200 scale-110' : 'bg-indigo-100 group-hover:scale-110'
-                }`}>
-                  <Upload className={`w-10 h-10 ${isDragging ? 'text-indigo-800' : 'text-indigo-600'}`} />
+                
+                {/* Visuals */}
+                <div className="relative z-10 flex flex-col items-center">
+                    <div className={`w-24 h-24 rounded-3xl flex items-center justify-center mb-8 transition-transform shadow-sm ${
+                    isDragging ? 'bg-indigo-200 scale-110 rotate-3' : 'bg-indigo-100 group-hover:scale-110 group-hover:-rotate-3'
+                    }`}>
+                    <Upload className={`w-12 h-12 ${isDragging ? 'text-indigo-800' : 'text-indigo-600'}`} />
+                    </div>
+                    <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4 tracking-tight">
+                    {isDragging ? 'Drop File Here' : 'Drag & Drop or Click'}
+                    </h2>
+                    <p className="text-slate-500 text-lg md:text-xl max-w-lg mx-auto">
+                    Transform your media instantly. Support for high-quality Video, Audio, Images, and PDF.
+                    </p>
+                    
+                    <div className="mt-12 flex flex-wrap justify-center gap-4 md:gap-8 text-sm md:text-base font-medium text-slate-400">
+                        <span className="flex items-center gap-2 px-3 py-1 bg-slate-50 rounded-full border border-slate-100"><FileVideo className="w-4 h-4 text-indigo-400" /> Video</span>
+                        <span className="flex items-center gap-2 px-3 py-1 bg-slate-50 rounded-full border border-slate-100"><FileAudio className="w-4 h-4 text-pink-400" /> Audio</span>
+                        <span className="flex items-center gap-2 px-3 py-1 bg-slate-50 rounded-full border border-slate-100"><FileImage className="w-4 h-4 text-blue-400" /> Image</span>
+                        <span className="flex items-center gap-2 px-3 py-1 bg-slate-50 rounded-full border border-slate-100"><FileText className="w-4 h-4 text-orange-400" /> PDF</span>
+                    </div>
                 </div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-2">Drag & Drop or Click to Upload</h2>
-                <p className="text-slate-500 text-lg">Support for Video, Audio, Images, and PDF</p>
-                <div className="mt-8 flex justify-center gap-4 text-sm text-slate-400">
-                   <span className="flex items-center gap-1"><FileVideo className="w-4 h-4" /> Video</span>
-                   <span className="flex items-center gap-1"><FileAudio className="w-4 h-4" /> Audio</span>
-                   <span className="flex items-center gap-1"><FileImage className="w-4 h-4" /> Image</span>
-                   <span className="flex items-center gap-1"><FileText className="w-4 h-4" /> PDF</span>
-                </div>
+
+                {/* Background Decoration */}
+                {isDragging && (
+                    <div className="absolute inset-0 bg-indigo-50/50 flex items-center justify-center pointer-events-none">
+                        <div className="w-[120%] h-[120%] border-[20px] border-indigo-100 rounded-full animate-pulse opacity-20"></div>
+                    </div>
+                )}
               </div>
             </div>
           ) : (
-            <div className="space-y-6 animate-in slide-in-from-bottom-8 duration-500">
+            <div className="max-w-5xl mx-auto w-full space-y-6 animate-in slide-in-from-bottom-8 duration-500">
               
               {/* Active File Card */}
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-8 items-start">
                 {/* Preview Thumbnail */}
-                <div className="w-full md:w-64 bg-slate-900 rounded-xl overflow-hidden aspect-video flex items-center justify-center relative flex-shrink-0 shadow-inner">
+                <div className="w-full md:w-64 bg-slate-900 rounded-xl overflow-hidden aspect-video flex items-center justify-center relative flex-shrink-0 shadow-inner group">
                   {activeFile.type === MediaType.IMAGE && (
                     <img src={activeFile.previewUrl} alt="Preview" className="w-full h-full object-contain" />
                   )}
                   {activeFile.type === MediaType.VIDEO && (
                      <div className="relative w-full h-full flex items-center justify-center">
                         <video src={activeFile.previewUrl} className="w-full h-full object-contain opacity-60" />
-                        <Play className="absolute w-12 h-12 text-white opacity-80" />
+                        <Play className="absolute w-12 h-12 text-white opacity-80 group-hover:scale-110 transition-transform" />
                      </div>
                   )}
                   {activeFile.type === MediaType.AUDIO && (
@@ -352,14 +389,14 @@ export default function App() {
                 <div className="flex-1 w-full space-y-6">
                    <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="text-xl font-bold text-slate-900 truncate max-w-md">{activeFile.file.name}</h3>
+                        <h3 className="text-xl font-bold text-slate-900 truncate max-w-md" title={activeFile.file.name}>{activeFile.file.name}</h3>
                         <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">
                            <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-600 font-medium uppercase">{activeFile.extension}</span>
                            <span>•</span>
                            <span>{formatFileSize(activeFile.file.size)}</span>
                         </div>
                       </div>
-                      <button onClick={clearFile} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
+                      <button onClick={clearFile} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-red-500 transition-colors">
                         <X className="w-5 h-5" />
                       </button>
                    </div>
@@ -375,7 +412,7 @@ export default function App() {
                             value={selectedFormat}
                             onChange={(e) => setSelectedFormat(e.target.value)}
                             disabled={status === ConversionStatus.PROCESSING || status === ConversionStatus.SUCCESS}
-                            className="w-full appearance-none p-4 pl-12 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none disabled:opacity-50"
+                            className="w-full appearance-none p-4 pl-12 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none disabled:opacity-50 disabled:bg-slate-100 cursor-pointer"
                           >
                             <option value="">Select target format...</option>
                             {getOptions().map(opt => (
