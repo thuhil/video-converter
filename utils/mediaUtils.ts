@@ -1,12 +1,24 @@
 import { jsPDF } from "jspdf";
 
+export const getFileExtension = (filename: string): string => {
+  return filename.slice((filename.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
+};
+
+export const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
 /**
- * Converts an image file to a different format (PNG, JPG) using HTML Canvas.
+ * Converts an image file to a different format (PNG, JPG, WEBP) using HTML Canvas.
  */
 export const convertImage = async (
   file: File,
-  format: 'image/png' | 'image/jpeg',
-  quality: number = 0.9
+  format: 'image/png' | 'image/jpeg' | 'image/webp',
+  quality: number = 0.92
 ): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -22,7 +34,7 @@ export const convertImage = async (
         return;
       }
       
-      // Fill white background for JPEGs to avoid black transparency
+      // Handle transparency for JPEG
       if (format === 'image/jpeg') {
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -42,7 +54,7 @@ export const convertImage = async (
     };
     
     img.onerror = (e) => {
-      reject(e);
+      reject(new Error("Failed to load image"));
       URL.revokeObjectURL(url);
     };
     
@@ -59,28 +71,24 @@ export const convertImageToPDF = async (file: File): Promise<Blob> => {
     const url = URL.createObjectURL(file);
 
     img.onload = () => {
-      // Initialize jsPDF (A4 default)
       const doc = new jsPDF();
-      
-      // Calculate dimensions to fit A4 while maintaining aspect ratio
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       
       const widthRatio = pageWidth / img.width;
       const heightRatio = pageHeight / img.height;
-      const ratio = widthRatio < heightRatio ? widthRatio : heightRatio;
+      const ratio = Math.min(widthRatio, heightRatio);
       
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext('2d');
       ctx?.drawImage(img, 0, 0);
-      const imgData = canvas.toDataURL('image/jpeg', 1.0);
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
 
       const finalWidth = img.width * ratio;
       const finalHeight = img.height * ratio;
       
-      // Center image
       const x = (pageWidth - finalWidth) / 2;
       const y = (pageHeight - finalHeight) / 2;
 

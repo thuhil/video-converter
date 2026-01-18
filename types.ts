@@ -17,17 +17,20 @@ export interface MediaFile {
   previewUrl: string;
   type: MediaType;
   id: string;
+  extension: string;
 }
 
 export interface ConversionOption {
   label: string;
   value: string;
   extension: string;
-  type: 'conversion' | 'ai-analysis'; // Distinguish between local conversion and AI tasks
+  type: 'conversion' | 'ai-analysis';
+  description?: string;
 }
 
 export interface ProcessingResult {
   url?: string;
   filename?: string;
-  text?: string; // For AI analysis results
+  text?: string;
+  stats?: string;
 }
